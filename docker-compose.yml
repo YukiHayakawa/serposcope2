@@ -1,0 +1,67 @@
+version: '3'
+services:
+  serposcope_web:
+    build: ./web/serposcope
+    container_name: serposcope_web
+    depends_on:
+      - serposcope_db
+    ports:
+      - '${SERPOSCOPE_PORT}:${SERPOSCOPE_PORT}'
+    command: sh -c '/scripts/wait-for-mysql.sh ${MYSQL_HOST} ${MYSQL_USER} ${MYSQL_PASSWORD}'
+    volumes:
+      - ./web/scripts:/scripts
+    networks:
+      - nginxproxy_default
+    environment:
+      SERPOSCOPE_DB_URL: 'jdbc:mysql://${MYSQL_HOST}/${MYSQL_DATABASE}?user=${MYSQL_USER}\&password=${MYSQL_PASSWORD}\&allowMultiQueries=true'
+      SERPOSCOPE_DB_DEBUG: "true"
+    restart: always
+  serposcope_nginx:
+    image: nginx
+    container_name: serposcope_nginx
+    depends_on:
+      - serposcope_web
+    volumes:
+      - ./web/nginx/conf.d:/etc/nginx/conf.d
+    networks:
+      - nginxproxy_default
+    extra_hosts:
+      - '${SERPOSCOPE_DOMAIN}:${SERVER_IP}'
+    environment:
+      VIRTUAL_HOST: ${SERPOSCOPE_DOMAIN}
+      LETSENCRYPT_HOST: ${SERPOSCOPE_DOMAIN}
+      LETSENCRYPT_EMAIL: ${EMAIL}
+      PORT: ${SERPOSCOPE_PORT}
+      HOST: ${SERPOSCOPE_HOST}
+      PROTOCOL: ${SERVER_PROTOCOL}
+    command: /bin/sh -c "envsubst '$$VIRTUAL_HOST$$PORT$$PROTOCOL$$HOST' < /etc/nginx/conf.d/default.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+    networks:
+      nginxproxy_default:
+    restart: always
+
+  serposcope_db:
+    build: ./db
+    container_name: serposcope_db
+    hostname: serposcope_db
+    command: mysqld --user=mysql
+    ports:
+      - ${MYSQL_PORT}:3306
+    env_file: .env
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d
+      - ./db/conf.d:/etc/mysql/conf.d/
+      - ./db/script:/script
+      - ./db/backup:/root/backup/mysql
+    networks:
+      nginxproxy_default:
+    restart: always
+networks:
+  nginxproxy_default:
+    external: true
+volumes:
+  mysql-data:
+    driver_opts:
+      type: none
+      device: ${MYSQL_DATA_PATH}
+      o: bind

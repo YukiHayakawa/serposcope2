@@ -1,0 +1,20 @@
+server_tokens off;
+
+server {
+  listen      80;
+  server_name ${VIRTUAL_HOST};
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header Host $http_host;
+  proxy_set_header X-NginX-Proxy true;
+  add_header X-Cache $upstream_cache_status;
+  gzip on;
+
+  location / {
+    proxy_pass http://${HOST}:${PORT};
+    proxy_ignore_headers Cache-Control;
+    proxy_cache_valid 200 302 60m;
+    proxy_cache_valid 404 10m;
+  }
+}
+
